@@ -847,7 +847,9 @@ EXPORT void free(void *ptr) {
     deallocate(&tcache, ptr);
 }
 
-EXPORT void cfree(void *ptr) __attribute__((alias("free")));
+EXPORT void cfree(void *ptr) {
+    free(ptr);
+}
 
 EXPORT int posix_memalign(void **memptr, size_t alignment, size_t size) {
     return alloc_aligned(memptr, alignment, size, sizeof(void *));
