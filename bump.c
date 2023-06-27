@@ -8,13 +8,14 @@ static mutex bump_mutex = MUTEX_INITIALIZER;
 static void *bump;
 static void *bump_end;
 
-void *bump_alloc(size_t size, size_t align) {
+void *bump_alloc(size_t size, size_t align)
+{
     assert(align <= PAGE_SIZE);
 
     mutex_lock(&bump_mutex);
 
-    uintptr_t ret = ALIGNMENT_CEILING((uintptr_t)bump, align);
-    if (ret + size > (uintptr_t)bump_end) {
+    uintptr_t ret = ALIGNMENT_CEILING((uintptr_t) bump, align);
+    if (ret + size > (uintptr_t) bump_end) {
         size_t chunk_size = CHUNK_CEILING(size);
         void *ptr = memory_map(NULL, chunk_size, true);
         if (!ptr) {
@@ -22,11 +23,11 @@ void *bump_alloc(size_t size, size_t align) {
             return NULL;
         }
         bump = ptr;
-        bump_end = (char *)ptr + chunk_size;
-        ret = (uintptr_t)ptr;
+        bump_end = (char *) ptr + chunk_size;
+        ret = (uintptr_t) ptr;
     }
 
-    bump = (void *)(ret + size);
+    bump = (void *) (ret + size);
     mutex_unlock(&bump_mutex);
-    return (void *)ret;
+    return (void *) ret;
 }

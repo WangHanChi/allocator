@@ -22,7 +22,7 @@ struct large {
 typedef rb_tree(struct large) large_tree;
 rb_proto(, large_tree_size_addr_, large_tree, struct large)
 
-struct slot {
+    struct slot {
     struct slot *next;
     uint8_t data[];
 };
@@ -51,7 +51,8 @@ struct arena {
     // intrusive singly-linked list
     struct slab *free_slab;
 
-    // intrusive circular doubly-linked list, with this sentinel node at both ends
+    // intrusive circular doubly-linked list, with this sentinel node at both
+    // ends
     struct slab partial_slab[N_CLASS];
 
     large_tree large_size_addr;
@@ -68,8 +69,8 @@ struct arena {
 struct thread_cache {
     struct slot *bin[N_CLASS];
     size_t bin_size[N_CLASS];
-    int arena_index; // -1 if uninitialized
-    bool dead; // true if destroyed or uninitialized
+    int arena_index;  // -1 if uninitialized
+    bool dead;        // true if destroyed or uninitialized
 };
 
 struct arena *get_huge_arena(void *ptr);

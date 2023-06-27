@@ -3,7 +3,8 @@
 
 #define N 10000000
 
-void *do_work(void *ptr) {
+void *do_work(void *ptr)
+{
     void **p = malloc(N * sizeof(void *));
 
     for (size_t i = 0; i < N; i++) {
@@ -19,7 +20,8 @@ void *do_work(void *ptr) {
     return ptr;
 }
 
-int main(void) {
+int main(void)
+{
     pthread_t thread;
     pthread_create(&thread, NULL, do_work, NULL);
     pthread_join(thread, NULL);

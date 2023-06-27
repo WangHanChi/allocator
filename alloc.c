@@ -1,8 +1,8 @@
 #define RB_COMPACT
 
 #include <errno.h>
-#include <pthread.h>
 #include <malloc.h>
+#include <pthread.h>
 #include <sched.h>
 #include <stdalign.h>
 #include <stdatomic.h>
@@ -22,8 +22,8 @@
 #include "memory.h"
 #include "mutex.h"
 #include "purge.h"
-#include "util.h"
 #include "rb.h"
+#include "util.h"
 
 #ifndef thread_local
 #define thread_local _Thread_local
@@ -39,20 +39,23 @@
 #define MAX_LARGE (CHUNK_SIZE - (LARGE_CHUNK_HEADER + sizeof(struct large)))
 
 #if INTPTR_MAX == INT32_MAX
-#define INITIAL_VA ((size_t)256 * 1024 * 1024)
+#define INITIAL_VA ((size_t) 256 * 1024 * 1024)
 #else
-#define INITIAL_VA ((size_t)1024 * 1024 * 1024 * 1024)
+#define INITIAL_VA ((size_t) 1024 * 1024 * 1024 * 1024)
 #endif
 
-static_assert(INITIAL_VA % CHUNK_SIZE == 0, "INITIAL_VA not a multiple of CHUNK_SIZE");
+static_assert(INITIAL_VA % CHUNK_SIZE == 0,
+              "INITIAL_VA not a multiple of CHUNK_SIZE");
 
-static int large_addr_comp(struct large *a, struct large *b) {
-    uintptr_t a_addr = (uintptr_t)a;
-    uintptr_t b_addr = (uintptr_t)b;
+static int large_addr_comp(struct large *a, struct large *b)
+{
+    uintptr_t a_addr = (uintptr_t) a;
+    uintptr_t b_addr = (uintptr_t) b;
     return (a_addr > b_addr) - (a_addr < b_addr);
 }
 
-static int large_size_addr_comp(struct large *a, struct large *b) {
+static int large_size_addr_comp(struct large *a, struct large *b)
+{
     size_t a_size = a->size;
     size_t b_size = b->size;
 
@@ -64,9 +67,14 @@ static int large_size_addr_comp(struct large *a, struct large *b) {
     return large_addr_comp(a, b);
 }
 
-rb_gen(, large_tree_size_addr_, large_tree, struct large, link_size_addr, large_size_addr_comp)
+rb_gen(,
+       large_tree_size_addr_,
+       large_tree,
+       struct large,
+       link_size_addr,
+       large_size_addr_comp)
 
-static bool init_failed = false;
+    static bool init_failed = false;
 static atomic_bool initialized = ATOMIC_VAR_INIT(false);
 static mutex init_mutex = MUTEX_INITIALIZER;
 
@@ -79,24 +87,33 @@ static size_t arena_initial_va_log2;
 
 static pthread_key_t tcache_key;
 
-__attribute__((tls_model("initial-exec")))
-static thread_local struct thread_cache tcache = {{NULL}, {0}, -1, true};
+__attribute__((tls_model(
+    "initial-exec"))) static thread_local struct thread_cache tcache = {{NULL},
+                                                                        {0},
+                                                                        -1,
+                                                                        true};
 
-struct arena *get_huge_arena(void *ptr) {
+struct arena *get_huge_arena(void *ptr)
+{
     if (ptr >= reserved_start && ptr < reserved_end) {
-        size_t diff = (char *)ptr - (char *)reserved_start;
+        size_t diff = (char *) ptr - (char *) reserved_start;
         return arenas + (diff >> arena_initial_va_log2);
     }
     return NULL;
 }
 
-static inline struct slab *to_slab(void *ptr) {
+static inline struct slab *to_slab(void *ptr)
+{
     return ALIGNMENT_ADDR2BASE(ptr, SLAB_SIZE);
 }
 
-static void slab_deallocate(struct arena *arena, struct slab *slab, struct slot *ptr, size_t bin);
+static void slab_deallocate(struct arena *arena,
+                            struct slab *slab,
+                            struct slot *ptr,
+                            size_t bin);
 
-static void tcache_destroy(void *key) {
+static void tcache_destroy(void *key)
+{
     struct thread_cache *cache = key;
     for (int a = 0; a < n_arenas; a++) {
         struct arena *arena = &arenas[a];
@@ -129,21 +146,24 @@ static void tcache_destroy(void *key) {
     cache->dead = true;
 }
 
-static void pick_arena(struct thread_cache *cache) {
+static void pick_arena(struct thread_cache *cache)
+{
     cache->arena_index = sched_getcpu();
     if (unlikely(cache->arena_index == -1 || cache->arena_index > n_arenas)) {
         cache->arena_index = 0;
     }
 }
 
-static void thread_init(struct thread_cache *cache) {
+static void thread_init(struct thread_cache *cache)
+{
     pick_arena(cache);
     if (likely(!pthread_setspecific(tcache_key, cache))) {
         cache->dead = false;
     }
 }
 
-static bool malloc_init_slow(struct thread_cache *cache) {
+static bool malloc_init_slow(struct thread_cache *cache)
+{
     if (likely(atomic_load_explicit(&initialized, memory_order_consume))) {
         thread_init(cache);
         return false;
@@ -183,14 +203,15 @@ static bool malloc_init_slow(struct thread_cache *cache) {
     struct rlimit limit;
     void *reserved = NULL;
     arena_initial_va_log2 = size_log2(INITIAL_VA / n_arenas);
-    size_t arena_initial_va = (size_t)1 << arena_initial_va_log2;
+    size_t arena_initial_va = (size_t) 1 << arena_initial_va_log2;
     size_t total_initial_va = arena_initial_va * n_arenas;
-    if (arena_initial_va >= CHUNK_SIZE
-        && !getrlimit(RLIMIT_AS, &limit) && limit.rlim_cur == RLIM_INFINITY) {
-        reserved = memory_map_aligned(NULL, total_initial_va, CHUNK_SIZE, false);
+    if (arena_initial_va >= CHUNK_SIZE && !getrlimit(RLIMIT_AS, &limit) &&
+        limit.rlim_cur == RLIM_INFINITY) {
+        reserved =
+            memory_map_aligned(NULL, total_initial_va, CHUNK_SIZE, false);
         if (reserved) {
             reserved_start = reserved;
-            reserved_end = (char *)reserved + total_initial_va;
+            reserved_end = (char *) reserved + total_initial_va;
         }
     }
 
@@ -203,7 +224,7 @@ static bool malloc_init_slow(struct thread_cache *cache) {
         }
         for (size_t bin = 0; bin < N_CLASS; bin++) {
 #ifndef NDEBUG
-            arena->partial_slab[bin].prev = (struct slab *)0xdeadbeef;
+            arena->partial_slab[bin].prev = (struct slab *) 0xdeadbeef;
 #endif
             arena->partial_slab[bin].next = &arena->partial_slab[bin];
         }
@@ -214,7 +235,7 @@ static bool malloc_init_slow(struct thread_cache *cache) {
         if (reserved) {
             chunk_free(&arena->chunks, reserved, arena_initial_va);
             arena->chunks_start = reserved;
-            reserved = arena->chunks_end = (char *)reserved + arena_initial_va;
+            reserved = arena->chunks_end = (char *) reserved + arena_initial_va;
         }
     }
 
@@ -225,14 +246,16 @@ static bool malloc_init_slow(struct thread_cache *cache) {
     return false;
 }
 
-static bool malloc_init(struct thread_cache *cache) {
+static bool malloc_init(struct thread_cache *cache)
+{
     if (likely(cache->arena_index != -1)) {
         return false;
     }
     return malloc_init_slow(cache);
 }
 
-inline struct arena *get_arena(struct thread_cache *cache) {
+inline struct arena *get_arena(struct thread_cache *cache)
+{
     if (unlikely(mutex_trylock(&arenas[cache->arena_index].mutex))) {
         pick_arena(cache);
         mutex_lock(&arenas[cache->arena_index].mutex);
@@ -240,7 +263,8 @@ inline struct arena *get_arena(struct thread_cache *cache) {
     return &arenas[cache->arena_index];
 }
 
-static void *arena_chunk_alloc(struct arena *arena) {
+static void *arena_chunk_alloc(struct arena *arena)
+{
     if (arena->free_chunk) {
         struct chunk *chunk = arena->free_chunk;
         arena->free_chunk = NULL;
@@ -258,11 +282,12 @@ static void *arena_chunk_alloc(struct arena *arena) {
             return NULL;
         }
     }
-    ((struct chunk *)chunk)->arena = arena - arenas;
+    ((struct chunk *) chunk)->arena = arena - arenas;
     return chunk;
 }
 
-static void arena_chunk_free(struct arena *arena, void *chunk) {
+static void arena_chunk_free(struct arena *arena, void *chunk)
+{
     if (arena->free_chunk) {
         if (purge_ratio >= 0) {
             memory_decommit(arena->free_chunk, CHUNK_SIZE);
@@ -276,18 +301,23 @@ static void arena_chunk_free(struct arena *arena, void *chunk) {
     arena->free_chunk = chunk;
 }
 
-static void *slab_first_alloc(struct arena *arena, struct slab *slab, size_t size, size_t bin) {
+static void *slab_first_alloc(struct arena *arena,
+                              struct slab *slab,
+                              size_t size,
+                              size_t bin)
+{
     slab->prev = &arena->partial_slab[bin];
     slab->size = size;
     slab->count = 1;
-    void *first = (void *)ALIGNMENT_CEILING((uintptr_t)slab->data, MIN_ALIGN);
-    slab->next_slot = (struct slot *)((char *)first + size);
+    void *first = (void *) ALIGNMENT_CEILING((uintptr_t) slab->data, MIN_ALIGN);
+    slab->next_slot = (struct slot *) ((char *) first + size);
     slab->next_slot->next = NULL;
-    slab->end = (struct slot *)((char *)slab->next_slot + size);
+    slab->end = (struct slot *) ((char *) slab->next_slot + size);
     return first;
 }
 
-static void *slab_allocate(struct arena *arena, size_t size, size_t bin) {
+static void *slab_allocate(struct arena *arena, size_t size, size_t bin)
+{
     // check for the sentinel node terminating the list
     if (!arena->partial_slab[bin].next->next_slot) {
         if (arena->free_slab) {
@@ -306,18 +336,20 @@ static void *slab_allocate(struct arena *arena, size_t size, size_t bin) {
         }
         chunk->small = true;
 
-        struct slab *slab = (struct slab *)ALIGNMENT_CEILING((uintptr_t)chunk->data, SLAB_SIZE);
+        struct slab *slab = (struct slab *) ALIGNMENT_CEILING(
+            (uintptr_t) chunk->data, SLAB_SIZE);
         slab->next = arena->partial_slab[bin].next;
         arena->partial_slab[bin].next = slab;
 
-        void *chunk_end = (char *)chunk + CHUNK_SIZE;
-        while ((uintptr_t)slab + SLAB_SIZE < (uintptr_t)chunk_end) {
-            slab = (struct slab *)((char *)slab + SLAB_SIZE);
+        void *chunk_end = (char *) chunk + CHUNK_SIZE;
+        while ((uintptr_t) slab + SLAB_SIZE < (uintptr_t) chunk_end) {
+            slab = (struct slab *) ((char *) slab + SLAB_SIZE);
             slab->next = arena->free_slab;
             arena->free_slab = slab;
         }
 
-        return slab_first_alloc(arena, arena->partial_slab[bin].next, size, bin);
+        return slab_first_alloc(arena, arena->partial_slab[bin].next, size,
+                                bin);
     }
 
     struct slab *slab = arena->partial_slab[bin].next;
@@ -325,26 +357,31 @@ static void *slab_allocate(struct arena *arena, size_t size, size_t bin) {
     slab->next_slot = slot->next;
     slab->count++;
     if (!slab->next_slot) {
-        uintptr_t new_end = (uintptr_t)slab->end + size;
-        if (new_end > (uintptr_t)slab + SLAB_SIZE) {
+        uintptr_t new_end = (uintptr_t) slab->end + size;
+        if (new_end > (uintptr_t) slab + SLAB_SIZE) {
             struct slab *next = slab->next;
             next->prev = &arena->partial_slab[bin];
             arena->partial_slab[bin].next = next;
         } else {
             slab->next_slot = slab->end;
             slab->next_slot->next = NULL;
-            slab->end = (struct slot *)new_end;
+            slab->end = (struct slot *) new_end;
         }
     }
 
     return slot;
 }
 
-static size_t size2bin(size_t size) {
+static size_t size2bin(size_t size)
+{
     return (size >> 4) - 1;
 }
 
-static void slab_deallocate(struct arena *arena, struct slab *slab, struct slot *slot, size_t bin) {
+static void slab_deallocate(struct arena *arena,
+                            struct slab *slab,
+                            struct slot *slot,
+                            size_t bin)
+{
     slot->next = slab->next_slot;
     slab->next_slot = slot;
     slab->count--;
@@ -364,7 +401,8 @@ static void slab_deallocate(struct arena *arena, struct slab *slab, struct slot 
     }
 }
 
-static inline void *allocate_small(struct thread_cache *cache, size_t size) {
+static inline void *allocate_small(struct thread_cache *cache, size_t size)
+{
     size_t bin = size2bin(size);
 
     if (unlikely(cache->dead)) {
@@ -404,45 +442,51 @@ static inline void *allocate_small(struct thread_cache *cache, size_t size) {
     return ptr;
 }
 
-static const struct large *const used_sentinel = (void *)0x1;
+static const struct large *const used_sentinel = (void *) 0x1;
 
-static bool is_used(const struct large *large) {
+static bool is_used(const struct large *large)
+{
     return large->link_size_addr.rbn_left == used_sentinel;
 }
 
-static void mark_used(struct large *large) {
-    large->link_size_addr.rbn_left = (struct large *)used_sentinel;
+static void mark_used(struct large *large)
+{
+    large->link_size_addr.rbn_left = (struct large *) used_sentinel;
 }
 
-static struct large *to_head(void *ptr) {
-    return (struct large *)((char *)ptr - sizeof(struct large));
+static struct large *to_head(void *ptr)
+{
+    return (struct large *) ((char *) ptr - sizeof(struct large));
 }
 
-static void update_next_span(void *ptr, size_t size) {
-    struct large *next = (struct large *)((char *)ptr + size);
-    if (next <= to_head((void *)CHUNK_CEILING((uintptr_t)next))) {
+static void update_next_span(void *ptr, size_t size)
+{
+    struct large *next = (struct large *) ((char *) ptr + size);
+    if (next <= to_head((void *) CHUNK_CEILING((uintptr_t) next))) {
         next->prev = ptr;
     }
 }
 
-static void large_free(struct arena *arena, void *span, size_t size) {
+static void large_free(struct arena *arena, void *span, size_t size)
+{
     struct large *self = span;
     self->size = size;
 
-    struct large *next = (void *)((char *)span + size);
+    struct large *next = (void *) ((char *) span + size);
 
     // Try to coalesce forward.
-    if (next <= to_head((void *)CHUNK_CEILING((uintptr_t)next)) && !is_used(next)) {
+    if (next <= to_head((void *) CHUNK_CEILING((uintptr_t) next)) &&
+        !is_used(next)) {
         // Coalesce span with the following address range.
         large_tree_size_addr_remove(&arena->large_size_addr, next);
         self->size += next->size;
     }
 
     // Try to coalesce backward.
-    struct large *prev = ((struct large *)span)->prev;
+    struct large *prev = ((struct large *) span)->prev;
     if (prev && !is_used(prev)) {
         // Coalesce span with the previous address range.
-        assert((char *)prev + prev->size == (char *)self);
+        assert((char *) prev + prev->size == (char *) self);
         large_tree_size_addr_remove(&arena->large_size_addr, prev);
         size_t new_size = self->size + prev->size;
         self = prev;
@@ -450,28 +494,34 @@ static void large_free(struct arena *arena, void *span, size_t size) {
     }
 
     if (self->size == CHUNK_SIZE - LARGE_CHUNK_HEADER) {
-        arena_chunk_free(arena, (struct chunk *)((char *)self - LARGE_CHUNK_HEADER));
+        arena_chunk_free(arena,
+                         (struct chunk *) ((char *) self - LARGE_CHUNK_HEADER));
     } else {
         large_tree_size_addr_insert(&arena->large_size_addr, self);
         update_next_span(self, self->size);
     }
 }
 
-static struct large *large_recycle(struct arena *arena, size_t size, size_t alignment) {
+static struct large *large_recycle(struct arena *arena,
+                                   size_t size,
+                                   size_t alignment)
+{
     size_t full_size = size + sizeof(struct large);
     size_t alloc_size = full_size + alignment - LARGE_ALIGN;
     assert(alloc_size >= full_size);
     struct large key;
     key.size = alloc_size;
-    struct large *span = large_tree_size_addr_nsearch(&arena->large_size_addr, &key);
+    struct large *span =
+        large_tree_size_addr_nsearch(&arena->large_size_addr, &key);
     if (!span) {
         return NULL;
     }
 
-    void *data = (void *)ALIGNMENT_CEILING((uintptr_t)span + sizeof(struct large), alignment);
+    void *data = (void *) ALIGNMENT_CEILING(
+        (uintptr_t) span + sizeof(struct large), alignment);
     struct large *head = to_head(data);
 
-    size_t leadsize = (char *)head - (char *)span;
+    size_t leadsize = (char *) head - (char *) span;
     assert(span->size >= leadsize + full_size);
     size_t trailsize = span->size - leadsize - full_size;
 
@@ -485,7 +535,7 @@ static struct large *large_recycle(struct arena *arena, size_t size, size_t alig
     }
     if (trailsize) {
         // Insert the trailing space as a smaller span.
-        struct large *trail = (struct large *)((char *)head + full_size);
+        struct large *trail = (struct large *) ((char *) head + full_size);
         trail->size = trailsize;
         large_tree_size_addr_insert(&arena->large_size_addr, trail);
         update_next_span(trail, trail->size);
@@ -497,7 +547,10 @@ static struct large *large_recycle(struct arena *arena, size_t size, size_t alig
     return head;
 }
 
-static void *allocate_large(struct thread_cache *cache, size_t size, size_t alignment) {
+static void *allocate_large(struct thread_cache *cache,
+                            size_t size,
+                            size_t alignment)
+{
     assert(alignment >= LARGE_ALIGN);
 
     struct arena *arena = get_arena(cache);
@@ -515,8 +568,9 @@ static void *allocate_large(struct thread_cache *cache, size_t size, size_t alig
     }
     chunk->small = false;
 
-    void *base = (char *)chunk + LARGE_CHUNK_HEADER;
-    void *data = (void *)ALIGNMENT_CEILING((uintptr_t)base + sizeof(struct large), alignment);
+    void *base = (char *) chunk + LARGE_CHUNK_HEADER;
+    void *data = (void *) ALIGNMENT_CEILING(
+        (uintptr_t) base + sizeof(struct large), alignment);
     head = to_head(data);
     head->size = size;
     head->prev = NULL;
@@ -526,17 +580,17 @@ static void *allocate_large(struct thread_cache *cache, size_t size, size_t alig
 
     if (head != base) {
         assert(alignment > MIN_ALIGN);
-        size_t lead = (char *)head - (char *)base;
-        head = (struct large *)((char *)base);
+        size_t lead = (char *) head - (char *) base;
+        head = (struct large *) ((char *) base);
         head->size = lead;
         head->prev = NULL;
         large_free(arena, base, lead);
     }
 
-    void *end = (char *)head->data + size;
-    void *chunk_end = (char *)chunk + CHUNK_SIZE;
+    void *end = (char *) head->data + size;
+    void *chunk_end = (char *) chunk + CHUNK_SIZE;
     if (end != chunk_end) {
-        large_free(arena, end, (char *)chunk_end - (char *)end);
+        large_free(arena, end, (char *) chunk_end - (char *) end);
     }
 
     mutex_unlock(&arena->mutex);
@@ -544,11 +598,15 @@ static void *allocate_large(struct thread_cache *cache, size_t size, size_t alig
     return head->data;
 }
 
-static bool large_expand_recycle(struct arena *arena, void *new_addr, size_t size) {
+static bool large_expand_recycle(struct arena *arena,
+                                 void *new_addr,
+                                 size_t size)
+{
     assert(new_addr);
     assert(ALIGNMENT_ADDR2BASE(new_addr, MIN_ALIGN) == new_addr);
 
-    if (new_addr > (void *)to_head((void *)CHUNK_CEILING((uintptr_t)new_addr))) {
+    if (new_addr >
+        (void *) to_head((void *) CHUNK_CEILING((uintptr_t) new_addr))) {
         return true;
     }
 
@@ -563,7 +621,7 @@ static bool large_expand_recycle(struct arena *arena, void *new_addr, size_t siz
     size_t trailsize = next->size - size;
     if (trailsize) {
         // Insert the trailing space as a smaller span.
-        struct large *trail = (struct large *)((char *)next + size);
+        struct large *trail = (struct large *) ((char *) next + size);
         trail->size = trailsize;
         large_tree_size_addr_insert(&arena->large_size_addr, trail);
         update_next_span(trail, trail->size);
@@ -572,14 +630,15 @@ static bool large_expand_recycle(struct arena *arena, void *new_addr, size_t siz
     return false;
 }
 
-static bool large_realloc_no_move(void *ptr, size_t old_size, size_t new_size) {
+static bool large_realloc_no_move(void *ptr, size_t old_size, size_t new_size)
+{
     struct chunk *chunk = CHUNK_ADDR2BASE(ptr);
     assert(!chunk->small);
     struct arena *arena = &arenas[chunk->arena];
     struct large *head = to_head(ptr);
 
     if (old_size < new_size) {
-        void *expand_addr = (char *)ptr + old_size;
+        void *expand_addr = (char *) ptr + old_size;
         size_t expand_size = new_size - old_size;
 
         mutex_lock(&arena->mutex);
@@ -591,7 +650,7 @@ static bool large_realloc_no_move(void *ptr, size_t old_size, size_t new_size) {
         update_next_span(head, new_size + sizeof(struct large));
         mutex_unlock(&arena->mutex);
     } else if (new_size < old_size) {
-        void *excess_addr = (char *)ptr + new_size;
+        void *excess_addr = (char *) ptr + new_size;
         size_t excess_size = old_size - new_size;
 
         mutex_lock(&arena->mutex);
@@ -604,7 +663,8 @@ static bool large_realloc_no_move(void *ptr, size_t old_size, size_t new_size) {
     return false;
 }
 
-static inline void *allocate(struct thread_cache *cache, size_t size) {
+static inline void *allocate(struct thread_cache *cache, size_t size)
+{
     if (size <= MAX_SMALL) {
         size_t non_zero_size = size | (!size);
         size_t real_size = (non_zero_size + 15) & ~15;
@@ -622,7 +682,8 @@ static inline void *allocate(struct thread_cache *cache, size_t size) {
     return huge_alloc(cache, size, CHUNK_SIZE);
 }
 
-static inline void deallocate_small(struct thread_cache *cache, void *ptr) {
+static inline void deallocate_small(struct thread_cache *cache, void *ptr)
+{
     struct slot *slot = ptr;
     struct slab *slab = to_slab(slot);
     size_t size = slab->size;
@@ -661,7 +722,7 @@ static inline void deallocate_small(struct thread_cache *cache, void *ptr) {
             struct slot *slot = flush;
             flush = NULL;
 
-            int arena_index = ((struct chunk *)CHUNK_ADDR2BASE(slot))->arena;
+            int arena_index = ((struct chunk *) CHUNK_ADDR2BASE(slot))->arena;
             struct arena *arena = &arenas[arena_index];
             mutex_lock(&arena->mutex);
             do {
@@ -684,7 +745,8 @@ static inline void deallocate_small(struct thread_cache *cache, void *ptr) {
     }
 }
 
-static inline void deallocate(struct thread_cache *cache, void *ptr) {
+static inline void deallocate(struct thread_cache *cache, void *ptr)
+{
     // malloc_init has been called if the pointer is non-NULL
     assert(!ptr || atomic_load(&initialized));
 
@@ -707,7 +769,8 @@ static inline void deallocate(struct thread_cache *cache, void *ptr) {
     }
 }
 
-static size_t alloc_size(void *ptr) {
+static size_t alloc_size(void *ptr)
+{
     // malloc_init has been called if the pointer is non-NULL
     assert(!ptr || atomic_load(&initialized));
 
@@ -724,7 +787,8 @@ static size_t alloc_size(void *ptr) {
     return to_head(ptr)->size;
 }
 
-static int alloc_aligned_result(void **memptr, void *ptr) {
+static int alloc_aligned_result(void **memptr, void *ptr)
+{
     if (unlikely(!ptr)) {
         return ENOMEM;
     }
@@ -732,7 +796,11 @@ static int alloc_aligned_result(void **memptr, void *ptr) {
     return 0;
 }
 
-static int alloc_aligned(void **memptr, size_t alignment, size_t size, size_t min_alignment) {
+static int alloc_aligned(void **memptr,
+                         size_t alignment,
+                         size_t size,
+                         size_t min_alignment)
+{
     assert(min_alignment != 0);
 
     if (unlikely((alignment - 1) & alignment || alignment < min_alignment)) {
@@ -758,12 +826,15 @@ static int alloc_aligned(void **memptr, size_t alignment, size_t size, size_t mi
     }
 
     if (worst_large_size <= MAX_LARGE) {
-        return alloc_aligned_result(memptr, allocate_large(cache, large_size, large_alignment));
+        return alloc_aligned_result(
+            memptr, allocate_large(cache, large_size, large_alignment));
     }
-    return alloc_aligned_result(memptr, huge_alloc(cache, size, CHUNK_CEILING(alignment)));
+    return alloc_aligned_result(
+        memptr, huge_alloc(cache, size, CHUNK_CEILING(alignment)));
 }
 
-static void *alloc_aligned_simple(size_t alignment, size_t size) {
+static void *alloc_aligned_simple(size_t alignment, size_t size)
+{
     void *ptr;
     int ret = alloc_aligned(&ptr, alignment, size, 1);
     if (unlikely(ret)) {
@@ -773,7 +844,8 @@ static void *alloc_aligned_simple(size_t alignment, size_t size) {
     return ptr;
 }
 
-EXPORT void *malloc(size_t size) {
+EXPORT void *malloc(size_t size)
+{
     void *ptr = allocate(&tcache, size);
     if (unlikely(!ptr)) {
         errno = ENOMEM;
@@ -782,7 +854,8 @@ EXPORT void *malloc(size_t size) {
     return ptr;
 }
 
-EXPORT void *calloc(size_t nmemb, size_t size) {
+EXPORT void *calloc(size_t nmemb, size_t size)
+{
     size_t total;
     if (unlikely(size_mul_overflow(nmemb, size, &total))) {
         errno = ENOMEM;
@@ -797,7 +870,8 @@ EXPORT void *calloc(size_t nmemb, size_t size) {
     return new_ptr;
 }
 
-EXPORT void *realloc(void *ptr, size_t size) {
+EXPORT void *realloc(void *ptr, size_t size)
+{
     if (!ptr) {
         return malloc(size);
     }
@@ -843,19 +917,23 @@ EXPORT void *realloc(void *ptr, size_t size) {
     return new_ptr;
 }
 
-EXPORT void free(void *ptr) {
+EXPORT void free(void *ptr)
+{
     deallocate(&tcache, ptr);
 }
 
-EXPORT void cfree(void *ptr) {
+EXPORT void cfree(void *ptr)
+{
     free(ptr);
 }
 
-EXPORT int posix_memalign(void **memptr, size_t alignment, size_t size) {
+EXPORT int posix_memalign(void **memptr, size_t alignment, size_t size)
+{
     return alloc_aligned(memptr, alignment, size, sizeof(void *));
 }
 
-EXPORT void *aligned_alloc(size_t alignment, size_t size) {
+EXPORT void *aligned_alloc(size_t alignment, size_t size)
+{
     // Comply with the semantics specified in DR460
     if (unlikely(size % alignment)) {
         errno = EINVAL;
@@ -864,15 +942,18 @@ EXPORT void *aligned_alloc(size_t alignment, size_t size) {
     return alloc_aligned_simple(alignment, size);
 }
 
-EXPORT void *memalign(size_t alignment, size_t size) {
+EXPORT void *memalign(size_t alignment, size_t size)
+{
     return alloc_aligned_simple(alignment, size);
 }
 
-EXPORT void *valloc(size_t size) {
+EXPORT void *valloc(size_t size)
+{
     return alloc_aligned_simple(PAGE_SIZE, size);
 }
 
-EXPORT void *pvalloc(size_t size) {
+EXPORT void *pvalloc(size_t size)
+{
     size_t rounded = PAGE_CEILING(size);
     if (unlikely(!rounded)) {
         errno = ENOMEM;
@@ -881,32 +962,39 @@ EXPORT void *pvalloc(size_t size) {
     return alloc_aligned_simple(PAGE_SIZE, rounded);
 }
 
-EXPORT size_t malloc_usable_size(void *ptr) {
+EXPORT size_t malloc_usable_size(void *ptr)
+{
     return alloc_size(ptr);
 }
 
-COLD EXPORT int malloc_trim(UNUSED size_t pad) {
+COLD EXPORT int malloc_trim(UNUSED size_t pad)
+{
     return 0;
 }
 
 COLD EXPORT void malloc_stats(void) {}
 
-COLD EXPORT struct mallinfo mallinfo(void) {
+COLD EXPORT struct mallinfo mallinfo(void)
+{
     return (struct mallinfo){0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 }
 
-COLD EXPORT int mallopt(UNUSED int param, UNUSED int value) {
+COLD EXPORT int mallopt(UNUSED int param, UNUSED int value)
+{
     return 1;
 }
 
-COLD EXPORT int malloc_info(UNUSED int options, UNUSED FILE *fp) {
+COLD EXPORT int malloc_info(UNUSED int options, UNUSED FILE *fp)
+{
     return ENOSYS;
 }
 
-COLD EXPORT void *malloc_get_state(void) {
+COLD EXPORT void *malloc_get_state(void)
+{
     return NULL;
 }
 
-COLD EXPORT int malloc_set_state(UNUSED void *state) {
+COLD EXPORT int malloc_set_state(UNUSED void *state)
+{
     return -2;
 }

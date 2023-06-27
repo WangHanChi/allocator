@@ -6,7 +6,8 @@
 
 long int purge_ratio = -1;
 
-COLD void purge_init(void) {
+COLD void purge_init(void)
+{
     char *ratio = secure_getenv("MALLOC_PURGE_RATIO");
     if (ratio) {
         purge_ratio = strtol(ratio, NULL, 10);

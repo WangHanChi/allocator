@@ -8,9 +8,9 @@
 
 #undef assert
 #ifdef NDEBUG
-#define assert(expr) ((void)0)
+#define assert(expr) ((void) 0)
 #else
-#define assert(expr) (likely(expr) ? (void)0 : abort())
+#define assert(expr) (likely(expr) ? (void) 0 : abort())
 #endif
 
 #define likely(x) __builtin_expect(!!(x), 1)
@@ -23,7 +23,8 @@
 #define __has_builtin(x) 0
 #endif
 
-static inline bool size_mul_overflow(size_t a, size_t b, size_t *result) {
+static inline bool size_mul_overflow(size_t a, size_t b, size_t *result)
+{
 #if __has_builtin(__builtin_umul_overflow) || __GNUC__ >= 5
 #if INTPTR_MAX == INT32_MAX
     return __builtin_umul_overflow(a, b, result);
@@ -33,11 +34,13 @@ static inline bool size_mul_overflow(size_t a, size_t b, size_t *result) {
 #else
     *result = a * b;
     static const size_t mul_no_overflow = 1UL << (sizeof(size_t) * 4);
-    return (a >= mul_no_overflow || b >= mul_no_overflow) && a && SIZE_MAX / a < b;
+    return (a >= mul_no_overflow || b >= mul_no_overflow) && a &&
+           SIZE_MAX / a < b;
 #endif
 }
 
-static inline size_t size_log2(size_t x) {
+static inline size_t size_log2(size_t x)
+{
 #if INTPTR_MAX == INT32_MAX
     return 31 - __builtin_clz(x);
 #else

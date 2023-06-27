@@ -6,32 +6,37 @@
 static struct chunk_recycler chunks_global;
 static mutex chunks_mutex = MUTEX_INITIALIZER;
 
-COLD void chunk_init(void) {
+COLD void chunk_init(void)
+{
     chunk_recycler_init(&chunks_global);
 }
 
-COLD void chunk_recycler_init(struct chunk_recycler *chunks) {
+COLD void chunk_recycler_init(struct chunk_recycler *chunks)
+{
     extent_tree_ad_new(&chunks->addr);
     extent_tree_szad_new(&chunks->size_addr);
 }
 
-static void maybe_get_chunks(struct chunk_recycler **chunks) {
+static void maybe_get_chunks(struct chunk_recycler **chunks)
+{
     if (!*chunks) {
         *chunks = &chunks_global;
         mutex_lock(&chunks_mutex);
     }
 }
 
-static void maybe_unlock(struct chunk_recycler *chunks) {
+static void maybe_unlock(struct chunk_recycler *chunks)
+{
     if (chunks == &chunks_global) {
         mutex_unlock(&chunks_mutex);
     }
 }
 
-void chunk_free(struct chunk_recycler *chunks, void *chunk, size_t size) {
+void chunk_free(struct chunk_recycler *chunks, void *chunk, size_t size)
+{
     maybe_get_chunks(&chunks);
     struct extent_node key;
-    key.addr = (void *)((uintptr_t)chunk + size);
+    key.addr = (void *) ((uintptr_t) chunk + size);
     struct extent_node *node = extent_tree_ad_nsearch(&chunks->addr, &key);
     /* Try to coalesce forward. */
     if (node && node->addr == key.addr) {
@@ -60,7 +65,7 @@ void chunk_free(struct chunk_recycler *chunks, void *chunk, size_t size) {
 
     /* Try to coalesce backward. */
     struct extent_node *prev = extent_tree_ad_prev(&chunks->addr, node);
-    if (prev && (void *)((uintptr_t)prev->addr + prev->size) == chunk) {
+    if (prev && (void *) ((uintptr_t) prev->addr + prev->size) == chunk) {
         /*
          * Coalesce chunk with the previous address range.  This does
          * not change the position within chunks_ad, so only
@@ -81,7 +86,11 @@ label_return:
     maybe_unlock(chunks);
 }
 
-void *chunk_recycle(struct chunk_recycler *chunks, void *new_addr, size_t size, size_t alignment) {
+void *chunk_recycle(struct chunk_recycler *chunks,
+                    void *new_addr,
+                    size_t size,
+                    size_t alignment)
+{
     size_t alloc_size = size + alignment - CHUNK_SIZE;
 
     assert(!new_addr || alignment == CHUNK_SIZE);
@@ -93,16 +102,18 @@ void *chunk_recycle(struct chunk_recycler *chunks, void *new_addr, size_t size, 
     key.addr = new_addr;
     key.size = alloc_size;
     maybe_get_chunks(&chunks);
-    struct extent_node *node = new_addr ? extent_tree_ad_search(&chunks->addr, &key) :
-        extent_tree_szad_nsearch(&chunks->size_addr, &key);
+    struct extent_node *node =
+        new_addr ? extent_tree_ad_search(&chunks->addr, &key)
+                 : extent_tree_szad_nsearch(&chunks->size_addr, &key);
     if (!node || (new_addr && node->size < size)) {
         return NULL;
     }
-    size_t leadsize = ALIGNMENT_CEILING((uintptr_t)node->addr, alignment) - (uintptr_t)node->addr;
+    size_t leadsize = ALIGNMENT_CEILING((uintptr_t) node->addr, alignment) -
+                      (uintptr_t) node->addr;
     assert(node->size >= leadsize + size);
     assert(!new_addr || leadsize == 0);
     size_t trailsize = node->size - leadsize - size;
-    void *ret = (void *)((uintptr_t)node->addr + leadsize);
+    void *ret = (void *) ((uintptr_t) node->addr + leadsize);
 
     /* Remove node from the tree. */
     extent_tree_szad_remove(&chunks->size_addr, node);
@@ -124,7 +135,7 @@ void *chunk_recycle(struct chunk_recycler *chunks, void *new_addr, size_t size, 
                 return NULL;
             }
         }
-        node->addr = (void *)((uintptr_t)(ret) + size);
+        node->addr = (void *) ((uintptr_t) (ret) + size);
         node->size = trailsize;
         extent_tree_szad_insert(&chunks->size_addr, node);
         extent_tree_ad_insert(&chunks->addr, node);
@@ -139,7 +150,8 @@ void *chunk_recycle(struct chunk_recycler *chunks, void *new_addr, size_t size, 
     return ret;
 }
 
-void *chunk_alloc(void *new_addr, size_t size, size_t alignment) {
+void *chunk_alloc(void *new_addr, size_t size, size_t alignment)
+{
     void *ptr;
     if ((ptr = chunk_recycle(&chunks_global, new_addr, size, alignment))) {
         if (unlikely(memory_commit(ptr, size))) {

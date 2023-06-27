@@ -33,4 +33,7 @@ purge.o: purge.c purge.h
 clean:
 	rm -f $(OBJECTS) $(BINARIES)
 
+format:
+	clang-format -i *.c *.h
+
 .PHONY: all clean
