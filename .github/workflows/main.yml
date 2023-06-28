@@ -1,0 +1,27 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  allocator-check:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3.3.0
+    - name: install-dependencies
+      run: |
+            sudo apt-get update
+            sudo apt-get -q -y install build-essential cppcheck
+    - name: make
+      run:  |
+            make
+
+
+  coding-style:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3.3.0
+    - name: coding convention
+      run: |
+            sudo apt-get install -q -y clang-format
+            sh .ci/check-format.sh
+      shell: bash
